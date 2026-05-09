@@ -9,184 +9,241 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 app.use(express.json());
 
+// Servir archivos estaticos del panel
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Ruta del panel
+app.get('/panel', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Firebase Init
 const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 const db = admin.firestore();
 
 // OpenAI Init
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Variables de entorno
-const GREEN_API_ID    = process.env.GREEN_API_ID;
-const GREEN_API_TOKEN = process.env.GREEN_API_TOKEN;
-const GREEN_BASE      = `https://api.green-api.com/waInstance${GREEN_API_ID}`;
+// Green API config
+const GREEN_API_URL = 'https://7107.api.greenapi.com';
+const ID_INSTANCE = process.env.GREEN_API_ID;
+const API_TOKEN = process.env.GREEN_API_TOKEN;
 
-// Horario del colmado (UTC-4 Republica Dominicana)
+// Horario: 7am - 10pm hora RD (UTC-4)
 function estaAbierto() {
-  const ahora = new Date();
-    const hora = ahora.getUTCHours() - 4;
-      return hora >= 7 && hora < 22;
-      }
+  const now = new Date();
+  const horaRD = new Date(now.toLocaleString('en-US', { timeZone: 'America/Santo_Domingo' }));
+  const hora = horaRD.getHours();
+  return hora >= 7 && hora < 22;
+}
 
-      // Enviar mensaje WhatsApp
-      async function enviarMensaje(chatId, texto) {
+// Enviar mensaje por WhatsApp
+async function enviarMensaje(chatId, mensaje) {
+  try {
+    await axios.post(
+      `${GREEN_API_URL}/waInstance${ID_INSTANCE}/sendMessage/${API_TOKEN}`,
+      { chatId, message: mensaje }
+    );
+  } catch (e) {
+    console.error('Error enviando mensaje:', e.message);
+  }
+}
+
+// Descargar audio
+async function descargarAudio(url) {
+  const resp = await axios.get(url, { responseType: 'arraybuffer' });
+  const tmpPath = path.join('/tmp', uuidv4() + '.ogg');
+  fs.writeFileSync(tmpPath, resp.data);
+  return tmpPath;
+}
+
+// Transcribir audio con Whisper
+async function transcribirAudio(audioPath) {
+  const transcription = await openai.audio.transcriptions.create({
+    file: fs.createReadStream(audioPath),
+    model: 'whisper-1',
+    language: 'es'
+  });
+  fs.unlinkSync(audioPath);
+  return transcription.text;
+}
+
+// Procesar pedido con GPT
+async function procesarPedido(texto) {
+  const systemPrompt = `Eres el asistente de un colmado dominicano. Tu tarea es identificar si el mensaje es un pedido de productos.
+
+Vocabulario dominicano:
+- fria/frias = cerveza(s) fria(s)
+- romo = ron
+- lechosa = papaya
+- habichuela = frijol
+- yuca, platano, guineo = productos tipicos
+- funda = bolsa
+- vaina = cosa/producto
+- dimelo = dime que necesitas
+
+Si ES un pedido, responde en JSON:
+{
+  "esPedido": true,
+  "productos": ["lista de productos identificados"],
+  "respuesta": "Mensaje de confirmacion amigable en espanol dominicano"
+}
+
+Si NO es un pedido, responde en JSON:
+{
+  "esPedido": false,
+  "respuesta": "Respuesta amigable"
+}
+
+Solo responde con el JSON, sin explicaciones adicionales.`;
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: texto }
+    ],
+    temperature: 0.3
+  });
+
+  const content = completion.choices[0].message.content.trim();
+  try {
+    return JSON.parse(content);
+  } catch {
+    return { esPedido: false, respuesta: 'Disculpa, no entendi tu mensaje. Puedes repetirlo?' };
+  }
+}
+
+// Guardar pedido en Firestore
+async function guardarPedido(chatId, nombreCliente, mensajeOriginal, productos) {
+  const pedido = {
+    cliente: chatId,
+    nombreCliente: nombreCliente || chatId.replace('@c.us', ''),
+    hora: admin.firestore.FieldValue.serverTimestamp(),
+    estado: 'nuevo',
+    mensajeOriginal,
+    productos
+  };
+  await db.collection('pedidos').add(pedido);
+}
+
+// Webhook principal
+app.post('/webhook', async (req, res) => {
+  res.sendStatus(200);
+
+  try {
+    const body = req.body;
+
+    // Solo procesar mensajes entrantes
+    if (body.typeWebhook !== 'incomingMessageReceived') return;
+
+    const messageData = body.messageData;
+    const senderData = body.senderData;
+    const chatId = senderData?.chatId;
+    const senderName = senderData?.senderName || '';
+
+    if (!chatId || chatId.includes('@g.us')) return; // Ignorar grupos
+
+    let textoMensaje = '';
+
+    if (messageData?.typeMessage === 'textMessage') {
+      textoMensaje = messageData.textMessageData?.textMessage || '';
+    } else if (messageData?.typeMessage === 'audioMessage' || messageData?.typeMessage === 'voiceMessage') {
+      const audioUrl = messageData.fileMessageData?.downloadUrl;
+      if (audioUrl) {
         try {
-            await axios.post(`${GREEN_BASE}/sendMessage/${GREEN_API_TOKEN}`, {
-                  chatId,
-                        message: texto,
-                            });
-                              } catch (err) {
-                                  console.error('Error enviando mensaje:', err.message);
-                                    }
-                                    }
+          const audioPath = await descargarAudio(audioUrl);
+          textoMensaje = await transcribirAudio(audioPath);
+          console.log('Audio transcrito:', textoMensaje);
+        } catch (e) {
+          console.error('Error transcribiendo audio:', e.message);
+          await enviarMensaje(chatId, 'No pude escuchar tu audio. Puedes escribirme el pedido?');
+          return;
+        }
+      }
+    } else {
+      return; // Ignorar otros tipos
+    }
 
-                                    // Descargar audio de Green API
-                                    async function descargarAudio(url) {
-                                      const response = await axios.get(url, { responseType: 'arraybuffer' });
-                                        const tmpPath = path.join('/tmp', `audio_${Date.now()}.ogg`);
-                                          fs.writeFileSync(tmpPath, response.data);
-                                            return tmpPath;
-                                            }
+    if (!textoMensaje.trim()) return;
 
-                                            // Transcribir audio con Whisper
-                                            async function transcribirAudio(filePath) {
-                                              const transcripcion = await openai.audio.transcriptions.create({
-                                                  file: fs.createReadStream(filePath),
-                                                      model: 'whisper-1',
-                                                          language: 'es',
-                                                            });
-                                                              fs.unlinkSync(filePath);
-                                                                return transcripcion.text;
-                                                                }
+    console.log(`Mensaje de ${senderName} (${chatId}): ${textoMensaje}`);
 
-                                                                // Procesar pedido con GPT
-                                                                async function procesarPedido(texto, nombreCliente) {
-                                                                  const systemPrompt = `
-                                                                  Eres el asistente de un colmado dominicano. Tu tarea es analizar mensajes de clientes
-                                                                  y extraer pedidos de productos.
+    // Verificar horario
+    if (!estaAbierto()) {
+      await enviarMensaje(chatId, 'Wao, el colmado esta cerrado ahora mismo. Abrimos de 7am a 10pm. Anota tu pedido y nos escribes mas tarde! 🌙');
+      return;
+    }
 
-                                                                  Vocabulario local:
-                                                                  - "fria" = cerveza fria (generalmente Presidente)
-                                                                  - "romo" = ron
-                                                                  - "cuelito" = cuello de pollo
-                                                                  - "chinola" = maracuya
-                                                                  - "lechosa" = papaya
-                                                                  - "funche" = harina de maiz
-                                                                  - "pan de agua" = pan suave dominicano
-                                                                  - "funda" = bolsa plastica
-                                                                  - "palo" = bebida alcoholica generica
+    // Procesar con GPT
+    const resultado = await procesarPedido(textoMensaje);
 
-                                                                  Si el mensaje ES un pedido responde SOLO con este JSON:
-                                                                  {
-                                                                    "esPedido": true,
-                                                                      "nombreCliente": "<nombre si lo menciono, si no usa '${nombreCliente}'>",
-                                                                        "productos": [
-                                                                            { "nombre": "<producto>", "cantidad": <numero> }
-                                                                              ]
-                                                                              }
+    if (resultado.esPedido) {
+      await guardarPedido(chatId, senderName, textoMensaje, resultado.productos);
+      await enviarMensaje(chatId, resultado.respuesta);
+    } else {
+      await enviarMensaje(chatId, resultado.respuesta);
+    }
 
-                                                                              Si NO es un pedido responde SOLO con:
-                                                                              { "esPedido": false }
+  } catch (e) {
+    console.error('Error en webhook:', e);
+  }
+});
 
-                                                                              No agregues texto fuera del JSON.
-                                                                              `;
+// API para el panel - obtener pedidos
+app.get('/api/pedidos', async (req, res) => {
+  try {
+    const snapshot = await db.collection('pedidos')
+      .orderBy('hora', 'desc')
+      .limit(100)
+      .get();
 
-                                                                                const response = await openai.chat.completions.create({
-                                                                                    model: 'gpt-4o-mini',
-                                                                                        messages: [
-                                                                                              { role: 'system', content: systemPrompt },
-                                                                                                    { role: 'user', content: texto },
-                                                                                                        ],
-                                                                                                            temperature: 0.2,
-                                                                                                              });
-                                                                                                              
-                                                                                                                try {
-                                                                                                                    return JSON.parse(response.choices[0].message.content);
-                                                                                                                      } catch {
-                                                                                                                          return { esPedido: false };
-                                                                                                                            }
-                                                                                                                            }
-                                                                                                                            
-                                                                                                                            // Guardar pedido en Firestore
-                                                                                                                            async function guardarPedido(chatId, nombreCliente, productos, mensajeOriginal) {
-                                                                                                                              const pedidoId = uuidv4();
-                                                                                                                                await db.collection('pedidos').doc(pedidoId).set({
-                                                                                                                                    cliente: chatId,
-                                                                                                                                        nombreCliente,
-                                                                                                                                            hora: new Date().toISOString(),
-                                                                                                                                                estado: 'nuevo',
-                                                                                                                                                    mensajeOriginal,
-                                                                                                                                                        productos,
-                                                                                                                                                          });
-                                                                                                                                                            return pedidoId;
-                                                                                                                                                            }
-                                                                                                                                                            
-                                                                                                                                                            // Webhook principal
-                                                                                                                                                            app.post('/webhook', async (req, res) => {
-                                                                                                                                                              res.sendStatus(200);
-                                                                                                                                                              
-                                                                                                                                                                try {
-                                                                                                                                                                    const body = req.body;
-                                                                                                                                                                    
-                                                                                                                                                                        if (body.typeWebhook !== 'incomingMessageReceived') return;
-                                                                                                                                                                        
-                                                                                                                                                                            const messageData = body.messageData;
-                                                                                                                                                                                const chatId      = body.senderData?.chatId;
-                                                                                                                                                                                    const senderName  = body.senderData?.senderName || 'Cliente';
-                                                                                                                                                                                        let textoFinal    = '';
-                                                                                                                                                                                        
-                                                                                                                                                                                            if (messageData?.typeMessage === 'audioMessage' ||
-                                                                                                                                                                                                    messageData?.typeMessage === 'pttMessage') {
-                                                                                                                                                                                                          const audioUrl = messageData.fileMessageData?.downloadUrl;
-                                                                                                                                                                                                                if (!audioUrl) return;
-                                                                                                                                                                                                                      const filePath = await descargarAudio(audioUrl);
-                                                                                                                                                                                                                            textoFinal     = await transcribirAudio(filePath);
-                                                                                                                                                                                                                                  console.log(`Audio transcrito [${chatId}]: ${textoFinal}`);
-                                                                                                                                                                                                                                      } else if (messageData?.typeMessage === 'textMessage') {
-                                                                                                                                                                                                                                            textoFinal = messageData.textMessageData?.textMessage || '';
-                                                                                                                                                                                                                                                  console.log(`Texto recibido [${chatId}]: ${textoFinal}`);
-                                                                                                                                                                                                                                                      } else return;
-                                                                                                                                                                                                                                                      
-                                                                                                                                                                                                                                                          if (!textoFinal.trim()) return;
-                                                                                                                                                                                                                                                          
-                                                                                                                                                                                                                                                              if (!estaAbierto()) {
-                                                                                                                                                                                                                                                                    await enviarMensaje(chatId, 'Estamos cerrados. Abrimos a las 7AM. Hasta luego!');
-                                                                                                                                                                                                                                                                          return;
-                                                                                                                                                                                                                                                                              }
-                                                                                                                                                                                                                                                                              
-                                                                                                                                                                                                                                                                                  const resultado = await procesarPedido(textoFinal, senderName);
-                                                                                                                                                                                                                                                                                  
-                                                                                                                                                                                                                                                                                      if (!resultado.esPedido) {
-                                                                                                                                                                                                                                                                                            await enviarMensaje(chatId, 'No entendi bien tu pedido. Puedes decirme que necesitas?');
-                                                                                                                                                                                                                                                                                                  return;
-                                                                                                                                                                                                                                                                                                      }
-                                                                                                                                                                                                                                                                                                      
-                                                                                                                                                                                                                                                                                                          const pedidoId = await guardarPedido(
-                                                                                                                                                                                                                                                                                                                chatId,
-                                                                                                                                                                                                                                                                                                                      resultado.nombreCliente,
-                                                                                                                                                                                                                                                                                                                            resultado.productos,
-                                                                                                                                                                                                                                                                                                                                  textoFinal
-                                                                                                                                                                                                                                                                                                                                      );
-                                                                                                                                                                                                                                                                                                                                      
-                                                                                                                                                                                                                                                                                                                                          console.log(`Pedido guardado [${pedidoId}]:`, resultado.productos);
-                                                                                                                                                                                                                                                                                                                                          
-                                                                                                                                                                                                                                                                                                                                              const listaProductos = resultado.productos
-                                                                                                                                                                                                                                                                                                                                                    .map(p => `- ${p.cantidad}x ${p.nombre}`)
-                                                                                                                                                                                                                                                                                                                                                          .join('\n');
-                                                                                                                                                                                                                                                                                                                                                          
-                                                                                                                                                                                                                                                                                                                                                              await enviarMensaje(
-                                                                                                                                                                                                                                                                                                                                                                    chatId,
-                                                                                                                                                                                                                                                                                                                                                                          `Pedido recibido, ${resultado.nombreCliente}!\n\n${listaProductos}\n\nEn unos minutos esta listo`
-                                                                                                                                                                                                                                                                                                                                                                              );
-                                                                                                                                                                                                                                                                                                                                                                              
-                                                                                                                                                                                                                                                                                                                                                                                } catch (err) {
-                                                                                                                                                                                                                                                                                                                                                                                    console.error('Error en webhook:', err);
-                                                                                                                                                                                                                                                                                                                                                                                      }
-                                                                                                                                                                                                                                                                                                                                                                                      });
-                                                                                                                                                                                                                                                                                                                                                                                      
-                                                                                                                                                                                                                                                                                                                                                                                      // Health check
-                                                                                                                                                                                                                                                                                                                                                                                      app.get('/', (req, res) => res.send('ColmadoBot activo'));
-                                                                                                                                                                                                                                                                                                                                                                                      
-                                                                                                                                                                                                                                                                                                                                                                                      const PORT = process.env.PORT || 3000;
-                                                                                                                                                                                                                                                                                                                                                                                      app.listen(PORT, () => console.log(`ColmadoBot corriendo en puerto ${PORT}`));
+    const pedidos = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      pedidos.push({
+        id: doc.id,
+        ...data,
+        hora: data.hora ? data.hora.toDate().toISOString() : null
+      });
+    });
+
+    res.json(pedidos);
+  } catch (e) {
+    console.error('Error obteniendo pedidos:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API para el panel - actualizar estado
+app.patch('/api/pedidos/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estado } = req.body;
+
+    if (!['nuevo', 'preparando', 'listo'].includes(estado)) {
+      return res.status(400).json({ error: 'Estado invalido' });
+    }
+
+    await db.collection('pedidos').doc(id).update({ estado });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error actualizando pedido:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Ruta raiz
+app.get('/', (req, res) => {
+  res.send('ColmadoBot activo');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`ColmadoBot corriendo en puerto ${PORT}`);
+});
