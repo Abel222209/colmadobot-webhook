@@ -7,20 +7,11 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; min-height: 100vh; }
-    header {
-      background: linear-gradient(135deg, #25D366, #128C7E);
-      color: white; padding: 16px 24px;
-      display: flex; align-items: center; justify-content: space-between;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
+    header { background: linear-gradient(135deg, #25D366, #128C7E); color: white; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
     header h1 { font-size: 1.4rem; font-weight: 700; }
     header span { font-size: 0.85rem; opacity: 0.85; }
     .stats { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
-    .stat-card {
-      background: white; border-radius: 10px; padding: 14px 20px;
-      flex: 1; min-width: 120px; text-align: center;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    }
+    .stat-card { background: white; border-radius: 10px; padding: 14px 20px; flex: 1; min-width: 120px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     .stat-card .num { font-size: 2rem; font-weight: 700; }
     .stat-card .label { font-size: 0.75rem; color: #666; margin-top: 4px; }
     .stat-card.nuevo .num { color: #e67e22; }
@@ -28,58 +19,26 @@
     .stat-card.listo .num { color: #27ae60; }
     .columnas { display: flex; gap: 16px; padding: 0 24px 24px; flex-wrap: wrap; }
     .columna { flex: 1; min-width: 280px; }
-    .columna-header {
-      padding: 10px 16px; border-radius: 8px 8px 0 0;
-      font-weight: 700; font-size: 0.9rem; color: white;
-      display: flex; align-items: center; gap: 8px;
-    }
+    .columna-header { padding: 10px 16px; border-radius: 8px 8px 0 0; font-weight: 700; font-size: 0.9rem; color: white; display: flex; align-items: center; gap: 8px; }
     .col-nuevo .columna-header { background: #e67e22; }
     .col-preparando .columna-header { background: #2980b9; }
     .col-listo .columna-header { background: #27ae60; }
-    .columna-body {
-      background: white; border-radius: 0 0 8px 8px;
-      padding: 12px; min-height: 200px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    }
-    .pedido {
-      background: #fafafa; border: 1px solid #e0e0e0;
-      border-radius: 8px; padding: 12px; margin-bottom: 10px;
-      transition: box-shadow 0.2s;
-    }
-    .pedido:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .columna-body { background: white; border-radius: 0 0 8px 8px; padding: 12px; min-height: 200px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .pedido { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
     .pedido-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
     .pedido-cliente { font-weight: 700; font-size: 0.9rem; color: #333; }
     .pedido-hora { font-size: 0.75rem; color: #999; }
-    .pedido-mensaje {
-      font-size: 0.82rem; color: #555; margin-bottom: 8px;
-      border-left: 3px solid #ddd; padding-left: 8px; font-style: italic;
-    }
+    .pedido-mensaje { font-size: 0.82rem; color: #555; margin-bottom: 8px; border-left: 3px solid #ddd; padding-left: 8px; font-style: italic; }
     .pedido-productos { margin-bottom: 10px; }
-    .producto-tag {
-      display: inline-block; background: #e8f5e9; color: #2e7d32;
-      font-size: 0.75rem; padding: 2px 8px; border-radius: 12px;
-      margin: 2px; font-weight: 600;
-    }
+    .producto-tag { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; margin: 2px; font-weight: 600; }
     .pedido-acciones { display: flex; gap: 6px; flex-wrap: wrap; }
-    .btn {
-      padding: 5px 12px; border: none; border-radius: 6px;
-      cursor: pointer; font-size: 0.78rem; font-weight: 600;
-      transition: opacity 0.2s;
-    }
-    .btn:hover { opacity: 0.85; }
+    .btn { padding: 5px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-weight: 600; }
     .btn-preparando { background: #2980b9; color: white; }
     .btn-listo { background: #27ae60; color: white; }
     .btn-nuevo { background: #e67e22; color: white; }
     .vacio { text-align: center; color: #bbb; padding: 30px 0; font-size: 0.85rem; }
-    .badge {
-      background: rgba(255,255,255,0.3); border-radius: 12px;
-      padding: 1px 8px; font-size: 0.8rem;
-    }
-    #conexion {
-      position: fixed; bottom: 16px; right: 16px;
-      padding: 8px 14px; border-radius: 20px; font-size: 0.78rem;
-      font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    }
+    .badge { background: rgba(255,255,255,0.3); border-radius: 12px; padding: 1px 8px; font-size: 0.8rem; }
+    #conexion { position: fixed; bottom: 16px; right: 16px; padding: 8px 14px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
     .online { background: #27ae60; color: white; }
     .offline { background: #e74c3c; color: white; }
   </style>
@@ -97,32 +56,29 @@
   <div class="columnas">
     <div class="columna col-nuevo">
       <div class="columna-header">Nuevos <span class="badge" id="badge-nuevo">0</span></div>
-      <div class="columna-body" id="col-nuevo"></div>
+      <div class="columna-body" id="col-nuevo"><div class="vacio">Sin pedidos</div></div>
     </div>
     <div class="columna col-preparando">
       <div class="columna-header">Preparando <span class="badge" id="badge-preparando">0</span></div>
-      <div class="columna-body" id="col-preparando"></div>
+      <div class="columna-body" id="col-preparando"><div class="vacio">Sin pedidos</div></div>
     </div>
     <div class="columna col-listo">
       <div class="columna-header">Listos <span class="badge" id="badge-listo">0</span></div>
-      <div class="columna-body" id="col-listo"></div>
+      <div class="columna-body" id="col-listo"><div class="vacio">Sin pedidos</div></div>
     </div>
   </div>
   <div id="conexion" class="offline">Conectando...</div>
   <script>
-    async function cargarPedidos() {
-      try {
-        const res = await fetch('/api/pedidos');
-        if (!res.ok) throw new Error('Error');
-        const pedidos = await res.json();
-        renderizar(pedidos);
-        document.getElementById('conexion').className = 'online';
-        document.getElementById('conexion').textContent = 'En linea';
-        document.getElementById('ultima-act').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-DO');
-      } catch(e) {
-        document.getElementById('conexion').className = 'offline';
-        document.getElementById('conexion').textContent = 'Sin conexion';
-      }
+    function setOnline() {
+      var el = document.getElementById('conexion');
+      el.className = 'online';
+      el.textContent = 'En linea';
+      document.getElementById('ultima-act').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-DO');
+    }
+    function setOffline() {
+      var el = document.getElementById('conexion');
+      el.className = 'offline';
+      el.textContent = 'Sin conexion';
     }
     function renderizar(pedidos) {
       var cols = { nuevo: [], preparando: [], listo: [] };
@@ -133,26 +89,42 @@
         document.getElementById('badge-' + estado).textContent = lista.length;
         var col = document.getElementById('col-' + estado);
         if (lista.length === 0) { col.innerHTML = '<div class="vacio">Sin pedidos</div>'; return; }
-        col.innerHTML = lista.map(tarjeta).join('');
+        col.innerHTML = lista.map(function(p) {
+          var hora = p.hora ? new Date(p.hora).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}) : '';
+          var prods = (p.productos||[]).map(function(pr){return '<span class="producto-tag">'+pr+'</span>';}).join('');
+          var botones = '';
+          if (p.estado==='nuevo') botones='<button class="btn btn-preparando" onclick="cambiarEstado(''+p.id+'','preparando')">Preparando</button>';
+          if (p.estado==='preparando') botones='<button class="btn btn-listo" onclick="cambiarEstado(''+p.id+'','listo')">Listo</button> <button class="btn btn-nuevo" onclick="cambiarEstado(''+p.id+'','nuevo')">Nuevo</button>';
+          if (p.estado==='listo') botones='<button class="btn btn-preparando" onclick="cambiarEstado(''+p.id+'','preparando')">Preparando</button>';
+          return '<div class="pedido"><div class="pedido-header"><span class="pedido-cliente">'+(p.nombreCliente||p.cliente)+'</span><span class="pedido-hora">'+hora+'</span></div><div class="pedido-mensaje">'+(p.mensajeOriginal||'')+'</div>'+(prods?'<div class="pedido-productos">'+prods+'</div>':'')+'<div class="pedido-acciones">'+botones+'</div></div>';
+        }).join('');
       });
     }
-    function tarjeta(p) {
-      var hora = p.hora ? new Date(p.hora).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}) : '';
-      var prods = (p.productos||[]).map(function(pr){return '<span class="producto-tag">'+pr+'</span>';}).join('');
-      var botones = '';
-      if (p.estado==='nuevo') botones='<button class="btn btn-preparando" onclick="cambiarEstado(''+p.id+'','preparando')">Preparando</button>';
-      if (p.estado==='preparando') botones='<button class="btn btn-listo" onclick="cambiarEstado(''+p.id+'','listo')">Listo</button><button class="btn btn-nuevo" onclick="cambiarEstado(''+p.id+'','nuevo')">Nuevo</button>';
-      if (p.estado==='listo') botones='<button class="btn btn-preparando" onclick="cambiarEstado(''+p.id+'','preparando')">Preparando</button>';
-      return '<div class="pedido"><div class="pedido-header"><span class="pedido-cliente">'+(p.nombreCliente||p.cliente)+'</span><span class="pedido-hora">'+hora+'</span></div><div class="pedido-mensaje">'+(p.mensajeOriginal||'')+'</div>'+(prods?'<div class="pedido-productos">'+prods+'</div>':'')+'<div class="pedido-acciones">'+botones+'</div></div>';
+    function cargarPedidos() {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/api/pedidos', true);
+      xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var pedidos = JSON.parse(xhr.responseText);
+            renderizar(pedidos);
+            setOnline();
+          } catch(e) { setOffline(); }
+        } else { setOffline(); }
+      };
+      xhr.onerror = function() { setOffline(); };
+      xhr.send();
     }
-    async function cambiarEstado(id, estado) {
-      try {
-        await fetch('/api/pedidos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({estado:estado})});
-        cargarPedidos();
-      } catch(e){alert('Error al actualizar');}
+    function cambiarEstado(id, estado) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('PATCH', '/api/pedidos/' + id, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.onload = function() { cargarPedidos(); };
+      xhr.onerror = function() { alert('Error al actualizar'); };
+      xhr.send(JSON.stringify({estado: estado}));
     }
     cargarPedidos();
     setInterval(cargarPedidos, 5000);
   </script>
 </body>
-</html>
+                                               </html>
