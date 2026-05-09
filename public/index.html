@@ -18,7 +18,6 @@ header h1{font-size:1.2rem}
 .col-h{padding:10px 14px;border-radius:8px 8px 0 0;color:white;font-weight:700;display:flex;gap:8px;align-items:center}
 .col-nv .col-h{background:#e67e22}.col-pr .col-h{background:#2980b9}.col-ls .col-h{background:#27ae60}
 .col-b{background:white;border-radius:0 0 8px 8px;padding:10px;min-height:180px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-/* CARD PEDIDO */
 .card{border-radius:10px;padding:12px;margin-bottom:10px;border-left:4px solid #e67e22;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.07)}
 .card.pregunta{border-left-color:#3498db;background:#f0f7ff}
 .card.listo{border-left-color:#27ae60;opacity:.85}
@@ -26,22 +25,17 @@ header h1{font-size:1.2rem}
 .cliente-info .nombre{font-weight:700;font-size:.95rem}
 .cliente-info .tel{font-size:.75rem;color:#888;margin-top:2px}
 .hora{font-size:.75rem;color:#aaa;white-space:nowrap}
-/* BADGE TIPO */
 .badge{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-bottom:8px}
 .badge.pedido{background:#fff3e0;color:#e67e22}
 .badge.pregunta{background:#e3f2fd;color:#1565c0}
-/* PRODUCTOS */
 .prods{background:#f9f9f9;border-radius:6px;padding:8px 10px;margin-bottom:8px}
 .prod-row{display:flex;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px solid #f0f0f0}
 .prod-row:last-child{border-bottom:none}
 .prod-cant{font-weight:700;font-size:.9rem;color:#222;min-width:60px}
 .prod-nombre{font-size:.88rem;color:#333}
-/* PREGUNTA */
 .preg-box{background:#e3f2fd;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:.88rem;color:#1565c0}
 .preg-box span{font-weight:700}
-/* MENSAJE ORIGINAL */
 .msg-orig{font-size:.78rem;color:#999;font-style:italic;border-left:3px solid #eee;padding-left:6px;margin-bottom:8px}
-/* BOTONES */
 .acts{display:flex;gap:5px;flex-wrap:wrap}
 .btn{padding:5px 12px;border:none;border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:700}
 .bp{background:#2980b9;color:white}.bl{background:#27ae60;color:white}.bn{background:#e67e22;color:white}
@@ -52,88 +46,86 @@ header h1{font-size:1.2rem}
 </style>
 </head>
 <body>
-<header><h1>🛒 ColmadoBot Panel</h1><span id="ua">Cargando...</span></header>
+<header><h1>&#128;&#x1F6D2; ColmadoBot Panel</h1><span id="ua">Cargando...</span></header>
 <div class="stats">
-  <div class="stat nv"><div class="n" id="c0">0</div><div>Nuevos</div></div>
-  <div class="stat pr"><div class="n" id="c1">0</div><div>Preparando</div></div>
-  <div class="stat ls"><div class="n" id="c2">0</div><div>Listos</div></div>
+<div class="stat nv"><div class="n" id="c0">0</div><div>Nuevos</div></div>
+<div class="stat pr"><div class="n" id="c1">0</div><div>Preparando</div></div>
+<div class="stat ls"><div class="n" id="c2">0</div><div>Listos</div></div>
 </div>
 <div class="cols">
-  <div class="col col-nv"><div class="col-h">Nuevos <span class="bdg" id="b0">0</span></div><div class="col-b" id="q0"></div></div>
-  <div class="col col-pr"><div class="col-h">Preparando <span class="bdg" id="b1">0</span></div><div class="col-b" id="q1"></div></div>
-  <div class="col col-ls"><div class="col-h">Listos <span class="bdg" id="b2">0</span></div><div class="col-b" id="q2"></div></div>
+<div class="col col-nv"><div class="col-h">Nuevos <span class="bdg" id="b0">0</span></div><div class="col-b" id="q0"></div></div>
+<div class="col col-pr"><div class="col-h">Preparando <span class="bdg" id="b1">0</span></div><div class="col-b" id="q1"></div></div>
+<div class="col col-ls"><div class="col-h">Listos <span class="bdg" id="b2">0</span></div><div class="col-b" id="q2"></div></div>
 </div>
 <div id="st" class="off">Conectando...</div>
 <script>
 function fmtTel(chatId){
-  var n=(chatId||'').replace('@c.us','');
-  if(n.length===11) return n.slice(0,1)+'-'+n.slice(1,4)+'-'+n.slice(4,7)+'-'+n.slice(7);
-  return n;
+var n=(chatId||'').replace('@c.us','');
+if(n.length===11) return n.slice(0,1)+'-'+n.slice(1,4)+'-'+n.slice(4,7)+'-'+n.slice(7);
+return n;
 }
 function fmtHora(iso){
-  if(!iso) return '';
-  return new Date(iso).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'});
+if(!iso) return '';
+return new Date(iso).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'});
 }
 function fmtProd(p){
-  if(typeof p==='string') return '<div class="prod-row"><span class="prod-cant"></span><span class="prod-nombre">'+p+'</span></div>';
-  var cant=(p.cantidad||'')+(p.unidad?' '+p.unidad:'');
-  return '<div class="prod-row"><span class="prod-cant">'+cant+'</span><span class="prod-nombre">'+p.nombre+'</span></div>';
+if(typeof p==='string') return '<div class="prod-row"><span class="prod-cant"></span><span class="prod-nombre">'+p+'</span></div>';
+var cant=(p.cantidad||'')+(p.unidad?' '+p.unidad:'');
+return '<div class="prod-row"><span class="prod-cant">'+cant+'</span><span class="prod-nombre">'+p.nombre+'</span></div>';
 }
 function card(p){
-  var tipo=p.tipo||(p.esPedido?'pedido':'otro');
-  var cls='card'+(tipo==='pregunta'?' pregunta':'')+(p.estado==='listo'?' listo':'');
-  var badge=tipo==='pregunta'
-    ?'<span class="badge pregunta">❓ PREGUNTA</span>'
-    :'<span class="badge pedido">📦 PEDIDO</span>';
-  var nombre=p.nombreCliente||p.cliente||'';
-  var tel=fmtTel(p.cliente||'');
-  var hora=fmtHora(p.hora);
-  // Contenido principal
-  var contenido='';
-  if(tipo==='pregunta'){
-    contenido='<div class="preg-box">¿Hay <span>'+(p.producto_pregunta||'?')+'</span>?</div>';
-  } else if(p.productos&&p.productos.length){
-    contenido='<div class="prods">'+p.productos.map(fmtProd).join('')+'</div>';
-  }
-  // Mensaje original
-  var msgOrig=p.mensajeOriginal?'<div class="msg-orig">"'+(p.mensajeOriginal).substring(0,80)+'"</div>':'';
-  // Botones
-  var btns='';
-  if(tipo!=='pregunta'){
-    if(p.estado==='nuevo') btns='<button class="btn bp" onclick="upd(''+p.id+'','preparando')">Preparando</button>';
-    if(p.estado==='preparando') btns='<button class="btn bl" onclick="upd(''+p.id+'','listo')">Listo ✓</button><button class="btn bn" onclick="upd(''+p.id+'','nuevo')">Nuevo</button>';
-    if(p.estado==='listo') btns='<button class="btn bp" onclick="upd(''+p.id+'','preparando')">Preparando</button>';
-  }
-  return '<div class="'+cls+'">'
-    +'<div class="card-top"><div class="cliente-info"><div class="nombre">'+nombre+'</div><div class="tel">📱 '+tel+'</div></div><div class="hora">'+hora+'</div></div>'
-    +badge+contenido+msgOrig
-    +(btns?'<div class="acts">'+btns+'</div>':'')
-    +'</div>';
+var tipo=p.tipo||(p.esPedido?'pedido':'otro');
+var cls='card'+(tipo==='pregunta'?' pregunta':'')+(p.estado==='listo'?' listo':'');
+var badge=tipo==='pregunta'
+?'<span class="badge pregunta">? PREGUNTA</span>'
+:'<span class="badge pedido">PEDIDO</span>';
+var nombre=p.nombreCliente||p.cliente||'';
+var tel=fmtTel(p.cliente||'');
+var hora=fmtHora(p.hora);
+var contenido='';
+if(tipo==='pregunta'){
+contenido='<div class="preg-box">?Hay <span>'+(p.producto_pregunta||'?')+'</span>?</div>';
+} else if(p.productos&&p.productos.length){
+contenido='<div class="prods">'+p.productos.map(fmtProd).join('')+'</div>';
+}
+var msgOrig=p.mensajeOriginal?'<div class="msg-orig">"'+(p.mensajeOriginal).substring(0,80)+'"</div>':'';
+var btns='';
+if(tipo!=='pregunta'){
+if(p.estado==='nuevo') btns='<button class="btn bp" data-id="'+p.id+'" data-e="preparando" onclick="upd(this)">Preparando</button>';
+if(p.estado==='preparando') btns='<button class="btn bl" data-id="'+p.id+'" data-e="listo" onclick="upd(this)">Listo</button><button class="btn bn" data-id="'+p.id+'" data-e="nuevo" onclick="upd(this)">Nuevo</button>';
+if(p.estado==='listo') btns='<button class="btn bp" data-id="'+p.id+'" data-e="preparando" onclick="upd(this)">Preparando</button>';
+}
+return '<div class="'+cls+'">'
++'<div class="card-top"><div class="cliente-info"><div class="nombre">'+nombre+'</div><div class="tel">Tel: '+tel+'</div></div><div class="hora">'+hora+'</div></div>'
++badge+contenido+msgOrig
++(btns?'<div class="acts">'+btns+'</div>':'')
++'</div>';
 }
 function load(){
-  fetch('/api/pedidos').then(function(r){return r.json();}).then(function(data){
-    var cols={nuevo:[],preparando:[],listo:[]};
-    data.forEach(function(p){if(cols[p.estado])cols[p.estado].push(p);});
-    ['nuevo','preparando','listo'].forEach(function(e,i){
-      var lst=cols[e];
-      document.getElementById('c'+i).textContent=lst.length;
-      document.getElementById('b'+i).textContent=lst.length;
-      var el=document.getElementById('q'+i);
-      el.innerHTML=lst.length?lst.map(card).join(''):'<div class="vacio">Sin pedidos</div>';
-    });
-    document.getElementById('st').className='on';
-    document.getElementById('st').textContent='En linea';
-    document.getElementById('ua').textContent='Act: '+new Date().toLocaleTimeString('es-DO');
-  }).catch(function(){
-    document.getElementById('st').className='off';
-    document.getElementById('st').textContent='Sin conexion';
-  });
+fetch('/api/pedidos').then(function(r){return r.json();}).then(function(data){
+var cols={nuevo:[],preparando:[],listo:[]};
+data.forEach(function(p){if(cols[p.estado])cols[p.estado].push(p);});
+['nuevo','preparando','listo'].forEach(function(e,i){
+var lst=cols[e];
+document.getElementById('c'+i).textContent=lst.length;
+document.getElementById('b'+i).textContent=lst.length;
+var el=document.getElementById('q'+i);
+el.innerHTML=lst.length?lst.map(card).join(''):'<div class="vacio">Sin pedidos</div>';
+});
+document.getElementById('st').className='on';
+document.getElementById('st').textContent='En linea';
+document.getElementById('ua').textContent='Act: '+new Date().toLocaleTimeString('es-DO');
+}).catch(function(){
+document.getElementById('st').className='off';
+document.getElementById('st').textContent='Sin conexion';
+});
 }
-function upd(id,estado){
-  fetch('/api/pedidos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({estado:estado})}).then(load);
+function upd(btn){
+var id=btn.dataset.id, estado=btn.dataset.e;
+fetch('/api/pedidos/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({estado:estado})}).then(load);
 }
 load();
 setInterval(load,5000);
 </script>
 </body>
-  </html>
+</html>
