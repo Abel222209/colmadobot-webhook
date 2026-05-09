@@ -19,11 +19,7 @@ app.get('/panel', (req, res) => {
 
 // Firebase Init
 const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
-
+admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 
 // OpenAI Init
@@ -34,7 +30,6 @@ const GREEN_API_URL = 'https://7107.api.greenapi.com';
 const ID_INSTANCE = process.env.GREEN_API_ID;
 const API_TOKEN = process.env.GREEN_API_TOKEN;
 
-// Horario: 7am - 10pm hora RD (UTC-4)
 function estaAbierto() {
   const now = new Date();
   const horaRD = new Date(now.toLocaleString('en-US', { timeZone: 'America/Santo_Domingo' }));
@@ -42,7 +37,6 @@ function estaAbierto() {
   return hora >= 7 && hora < 22;
 }
 
-// Enviar mensaje por WhatsApp
 async function enviarMensaje(chatId, mensaje) {
   try {
     await axios.post(
@@ -54,7 +48,6 @@ async function enviarMensaje(chatId, mensaje) {
   }
 }
 
-// Descargar audio
 async function descargarAudio(url) {
   const resp = await axios.get(url, { responseType: 'arraybuffer' });
   const tmpPath = path.join('/tmp', uuidv4() + '.ogg');
@@ -62,7 +55,6 @@ async function descargarAudio(url) {
   return tmpPath;
 }
 
-// Transcribir audio con Whisper
 async function transcribirAudio(audioPath) {
   const transcription = await openai.audio.transcriptions.create({
     file: fs.createReadStream(audioPath),
@@ -73,7 +65,6 @@ async function transcribirAudio(audioPath) {
   return transcription.text;
 }
 
-// Procesar pedido con GPT
 async function procesarPedido(texto) {
   const systemPrompt = `Eres el asistente de un colmado dominicano. Tu tarea es identificar si el mensaje es un pedido de productos.
 
@@ -87,20 +78,11 @@ Vocabulario dominicano:
 - vaina = cosa/producto
 - dimelo = dime que necesitas
 
-Si ES un pedido, responde en JSON:
-{
-  "esPedido": true,
-  "productos": ["lista de productos identificados"],
-  "respuesta": "Mensaje de confirmacion amigable en espanol dominicano"
-}
+Si ES un pedido responde SOLO con este JSON exacto:
+{"esPedido":true,"productos":["producto1","producto2"],"respuesta":"Mensaje amigable dominicano confirmando el pedido"}
 
-Si NO es un pedido, responde en JSON:
-{
-  "esPedido": false,
-  "respuesta": "Respuesta amigable"
-}
-
-Solo responde con el JSON, sin explicaciones adicionales.`;
+Si NO es un pedido responde SOLO con este JSON exacto:
+{"esPedido":false,"respuesta":"Respuesta amigable"}`;
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -113,13 +95,13 @@ Solo responde con el JSON, sin explicaciones adicionales.`;
 
   const content = completion.choices[0].message.content.trim();
   try {
-    return JSON.parse(content);
+    const cleaned = content.replace(/^[sS]*?({)/,'$1').replace(/(})[^}]*$/,'$1');
+    return JSON.parse(cleaned);
   } catch {
     return { esPedido: false, respuesta: 'Disculpa, no entendi tu mensaje. Puedes repetirlo?' };
   }
 }
 
-// Guardar pedido en Firestore
 async function guardarPedido(chatId, nombreCliente, mensajeOriginal, productos) {
   const pedido = {
     cliente: chatId,
@@ -135,26 +117,20 @@ async function guardarPedido(chatId, nombreCliente, mensajeOriginal, productos) 
 // Webhook principal
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
-
   try {
     const body = req.body;
-
-    // Solo procesar mensajes entrantes
     if (body.typeWebhook !== 'incomingMessageReceived') return;
-
     const messageData = body.messageData;
     const senderData = body.senderData;
-    const chatId = senderData?.chatId;
-    const senderName = senderData?.senderName || '';
-
-    if (!chatId || chatId.includes('@g.us')) return; // Ignorar grupos
+    const chatId = senderData && senderData.chatId;
+    const senderName = (senderData && senderData.senderName) || '';
+    if (!chatId || chatId.includes('@g.us')) return;
 
     let textoMensaje = '';
-
-    if (messageData?.typeMessage === 'textMessage') {
-      textoMensaje = messageData.textMessageData?.textMessage || '';
-    } else if (messageData?.typeMessage === 'audioMessage' || messageData?.typeMessage === 'voiceMessage') {
-      const audioUrl = messageData.fileMessageData?.downloadUrl;
+    if (messageData && messageData.typeMessage === 'textMessage') {
+      textoMensaje = (messageData.textMessageData && messageData.textMessageData.textMessage) || '';
+    } else if (messageData && (messageData.typeMessage === 'audioMessage' || messageData.typeMessage === 'voiceMessage')) {
+      const audioUrl = messageData.fileMessageData && messageData.fileMessageData.downloadUrl;
       if (audioUrl) {
         try {
           const audioPath = await descargarAudio(audioUrl);
@@ -166,43 +142,31 @@ app.post('/webhook', async (req, res) => {
           return;
         }
       }
-    } else {
-      return; // Ignorar otros tipos
-    }
+    } else { return; }
 
     if (!textoMensaje.trim()) return;
+    console.log('Mensaje de ' + senderName + ' (' + chatId + '): ' + textoMensaje);
 
-    console.log(`Mensaje de ${senderName} (${chatId}): ${textoMensaje}`);
-
-    // Verificar horario
     if (!estaAbierto()) {
-      await enviarMensaje(chatId, 'Wao, el colmado esta cerrado ahora mismo. Abrimos de 7am a 10pm. Anota tu pedido y nos escribes mas tarde! 🌙');
+      await enviarMensaje(chatId, 'Wao, el colmado esta cerrado ahora mismo. Abrimos de 7am a 10pm. Anotate el pedido y nos escribes manana! 🌙');
       return;
     }
 
-    // Procesar con GPT
     const resultado = await procesarPedido(textoMensaje);
-
     if (resultado.esPedido) {
       await guardarPedido(chatId, senderName, textoMensaje, resultado.productos);
-      await enviarMensaje(chatId, resultado.respuesta);
-    } else {
-      await enviarMensaje(chatId, resultado.respuesta);
     }
+    await enviarMensaje(chatId, resultado.respuesta);
 
   } catch (e) {
     console.error('Error en webhook:', e);
   }
 });
 
-// API para el panel - obtener pedidos
+// API para el panel - obtener pedidos (sin orderBy para evitar indice)
 app.get('/api/pedidos', async (req, res) => {
   try {
-    const snapshot = await db.collection('pedidos')
-      .orderBy('hora', 'desc')
-      .limit(100)
-      .get();
-
+    const snapshot = await db.collection('pedidos').limit(100).get();
     const pedidos = [];
     snapshot.forEach(doc => {
       const data = doc.data();
@@ -212,7 +176,12 @@ app.get('/api/pedidos', async (req, res) => {
         hora: data.hora ? data.hora.toDate().toISOString() : null
       });
     });
-
+    // Ordenar por hora descendente en memoria
+    pedidos.sort((a, b) => {
+      if (!a.hora) return 1;
+      if (!b.hora) return -1;
+      return new Date(b.hora) - new Date(a.hora);
+    });
     res.json(pedidos);
   } catch (e) {
     console.error('Error obteniendo pedidos:', e);
@@ -225,11 +194,9 @@ app.patch('/api/pedidos/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;
-
     if (!['nuevo', 'preparando', 'listo'].includes(estado)) {
       return res.status(400).json({ error: 'Estado invalido' });
     }
-
     await db.collection('pedidos').doc(id).update({ estado });
     res.json({ ok: true });
   } catch (e) {
@@ -238,12 +205,7 @@ app.patch('/api/pedidos/:id', async (req, res) => {
   }
 });
 
-// Ruta raiz
-app.get('/', (req, res) => {
-  res.send('ColmadoBot activo');
-});
+app.get('/', (req, res) => { res.send('ColmadoBot activo'); });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`ColmadoBot corriendo en puerto ${PORT}`);
-});
+app.listen(PORT, () => { console.log('ColmadoBot corriendo en puerto ' + PORT); });
