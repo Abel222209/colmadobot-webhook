@@ -9,26 +9,22 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 app.use(express.json());
 
-// Servir archivos estaticos del panel
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Ruta del panel
 app.get('/panel', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Firebase Init
 const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 
-// OpenAI Init
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Green API config
 const GREEN_API_URL = 'https://7107.api.greenapi.com';
 const ID_INSTANCE = process.env.GREEN_API_ID;
 const API_TOKEN = process.env.GREEN_API_TOKEN;
+const BOT_PHONE = process.env.BOT_PHONE || '18498028229';
 
 function estaAbierto() {
   const now = new Date();
@@ -66,23 +62,32 @@ async function transcribirAudio(audioPath) {
 }
 
 async function procesarPedido(texto) {
-  const systemPrompt = `Eres el asistente de un colmado dominicano. Tu tarea es identificar si el mensaje es un pedido de productos.
+  const systemPrompt = `Eres el asistente de ColmadoBot, un colmado dominicano. Tu trabajo es leer mensajes de clientes e identificar pedidos.
 
 Vocabulario dominicano:
 - fria/frias = cerveza(s) fria(s)
 - romo = ron
 - lechosa = papaya
 - habichuela = frijol
-- yuca, platano, guineo = productos tipicos
 - funda = bolsa
-- vaina = cosa/producto
-- dimelo = dime que necesitas
+- coca grande = Coca-Cola 2L
+- pesito de = porcion pequena de
+- malta grande/pequena = malta Morena segun tamano
 
-Si ES un pedido responde SOLO con este JSON exacto:
-{"esPedido":true,"productos":["producto1","producto2"],"respuesta":"Mensaje amigable dominicano confirmando el pedido"}
+Responde UNICAMENTE con JSON valido, sin texto adicional antes ni despues.
 
-Si NO es un pedido responde SOLO con este JSON exacto:
-{"esPedido":false,"respuesta":"Respuesta amigable"}`;
+Si ES un pedido de productos:
+{"esPedido":true,"productos":["producto1","producto2"],"respuesta":"Anotao! Te llevo [menciona los productos]. Dame un momentico!"}
+
+Si NO es un pedido (saludo, pregunta general, etc.):
+{"esPedido":false,"respuesta":"Buenas! Soy el asistente del colmado. Que vas a necesitar hoy?"}
+
+REGLAS:
+- El campo 'respuesta' DEBE ser un mensaje real y personalizado basado en lo que dijo el cliente
+- Para pedidos: menciona los productos especificos que pidio
+- Para no-pedidos: responde de forma natural al contexto del mensaje
+- Usa tono amigable en espanol dominicano
+- NO copies literalmente los ejemplos, adaptalos al mensaje real`;
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -94,8 +99,9 @@ Si NO es un pedido responde SOLO con este JSON exacto:
   });
 
   const content = completion.choices[0].message.content.trim();
+  console.log('GPT raw:', content);
   try {
-    const cleaned = content.replace(/^[sS]*?({)/,'$1').replace(/(})[^}]*$/,'$1');
+    const cleaned = content.replace(/^[\s\S]*?({)/,'$1').replace(/(})[^}]*$/,'$1');
     return JSON.parse(cleaned);
   } catch {
     return { esPedido: false, respuesta: 'Disculpa, no entendi tu mensaje. Puedes repetirlo?' };
@@ -114,17 +120,20 @@ async function guardarPedido(chatId, nombreCliente, mensajeOriginal, productos) 
   await db.collection('pedidos').add(pedido);
 }
 
-// Webhook principal
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   try {
     const body = req.body;
     if (body.typeWebhook !== 'incomingMessageReceived') return;
+
     const messageData = body.messageData;
     const senderData = body.senderData;
     const chatId = senderData && senderData.chatId;
     const senderName = (senderData && senderData.senderName) || '';
-    if (!chatId || chatId.includes('@g.us')) return;
+
+    if (!chatId) return;
+    if (chatId.includes('@g.us')) return;
+    if (chatId === BOT_PHONE + '@c.us') return;
 
     let textoMensaje = '';
     if (messageData && messageData.typeMessage === 'textMessage') {
@@ -145,16 +154,19 @@ app.post('/webhook', async (req, res) => {
     } else { return; }
 
     if (!textoMensaje.trim()) return;
-    console.log('Mensaje de ' + senderName + ' (' + chatId + '): ' + textoMensaje);
+    console.log('Mensaje de', senderName, '(', chatId, '):', textoMensaje);
 
     if (!estaAbierto()) {
-      await enviarMensaje(chatId, 'Wao, el colmado esta cerrado ahora mismo. Abrimos de 7am a 10pm. Anotate el pedido y nos escribes manana! 🌙');
+      await enviarMensaje(chatId, 'Wao, el colmado esta cerrado ahora mismo. Abrimos de 7am a 10pm. Anotate el pedido y nos escribes manana!');
       return;
     }
 
     const resultado = await procesarPedido(textoMensaje);
+    console.log('Resultado:', JSON.stringify(resultado));
+
     if (resultado.esPedido) {
       await guardarPedido(chatId, senderName, textoMensaje, resultado.productos);
+      console.log('Pedido guardado para:', senderName);
     }
     await enviarMensaje(chatId, resultado.respuesta);
 
@@ -163,7 +175,6 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// API para el panel - obtener pedidos (sin orderBy para evitar indice)
 app.get('/api/pedidos', async (req, res) => {
   try {
     const snapshot = await db.collection('pedidos').limit(100).get();
@@ -176,7 +187,6 @@ app.get('/api/pedidos', async (req, res) => {
         hora: data.hora ? data.hora.toDate().toISOString() : null
       });
     });
-    // Ordenar por hora descendente en memoria
     pedidos.sort((a, b) => {
       if (!a.hora) return 1;
       if (!b.hora) return -1;
@@ -189,7 +199,6 @@ app.get('/api/pedidos', async (req, res) => {
   }
 });
 
-// API para el panel - actualizar estado
 app.patch('/api/pedidos/:id', async (req, res) => {
   try {
     const { id } = req.params;
