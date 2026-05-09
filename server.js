@@ -8,7 +8,6 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 app.use(express.json());
-
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/panel', (req, res) => {
@@ -62,32 +61,25 @@ async function transcribirAudio(audioPath) {
 }
 
 async function procesarPedido(texto) {
-  const systemPrompt = `Eres el asistente de ColmadoBot, un colmado dominicano. Tu trabajo es leer mensajes de clientes e identificar pedidos.
+  const systemPrompt = `Eres el asistente de ColmadoBot. Clasifica el mensaje del cliente y responde SOLO con JSON valido.
 
-Vocabulario dominicano:
-- fria/frias = cerveza(s) fria(s)
-- romo = ron
-- lechosa = papaya
-- habichuela = frijol
-- funda = bolsa
-- coca grande = Coca-Cola 2L
-- pesito de = porcion pequena de
-- malta grande/pequena = malta Morena segun tamano
+TIPOS:
 
-Responde UNICAMENTE con JSON valido, sin texto adicional antes ni despues.
+1) PEDIDO - cliente pide productos:
+{"tipo":"pedido","productos":[{"nombre":"yuca","cantidad":"6","unidad":"libras"},{"nombre":"pollo","cantidad":"media","unidad":"libra"},{"nombre":"huevos","cantidad":"6","unidad":"unidades"},{"nombre":"platanos amarillos grandes","cantidad":"6","unidad":"unidades"}],"respuesta":"Anotao! Te llevo [menciona los productos con cantidades]. Dame un momentico!"}
 
-Si ES un pedido de productos:
-{"esPedido":true,"productos":["producto1","producto2"],"respuesta":"Anotao! Te llevo [menciona los productos]. Dame un momentico!"}
+2) PREGUNTA - cliente pregunta disponibilidad (hay X?, tienen X?):
+{"tipo":"pregunta","producto_pregunta":"chuleta","respuesta":"Dejame verificar si tenemos chuleta. En un momentico te digo!"}
 
-Si NO es un pedido (saludo, pregunta general, etc.):
-{"esPedido":false,"respuesta":"Buenas! Soy el asistente del colmado. Que vas a necesitar hoy?"}
+3) OTRO - saludo o conversacion general:
+{"tipo":"otro","respuesta":"Buenas! Que vas a necesitar del colmado hoy?"}
 
 REGLAS:
-- El campo 'respuesta' DEBE ser un mensaje real y personalizado basado en lo que dijo el cliente
-- Para pedidos: menciona los productos especificos que pidio
-- Para no-pedidos: responde de forma natural al contexto del mensaje
-- Usa tono amigable en espanol dominicano
-- NO copies literalmente los ejemplos, adaptalos al mensaje real`;
+- unidad segun contexto: libras/libra, unidades, fundas, litros, etc.
+- Para huevos, platanos, frutas sin peso especificado: unidad = "unidades"
+- La respuesta debe ser real y personalizada en espanol dominicano
+- NO copies los ejemplos, adaptalos al mensaje real
+- Solo JSON, nada mas`;
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -95,7 +87,7 @@ REGLAS:
       { role: 'system', content: systemPrompt },
       { role: 'user', content: texto }
     ],
-    temperature: 0.3
+    temperature: 0.2
   });
 
   const content = completion.choices[0].message.content.trim();
@@ -104,18 +96,20 @@ REGLAS:
     const cleaned = content.replace(/^[\s\S]*?({)/,'$1').replace(/(})[^}]*$/,'$1');
     return JSON.parse(cleaned);
   } catch {
-    return { esPedido: false, respuesta: 'Disculpa, no entendi tu mensaje. Puedes repetirlo?' };
+    return { tipo: 'otro', respuesta: 'Disculpa, no entendi tu mensaje. Puedes repetirlo?' };
   }
 }
 
-async function guardarPedido(chatId, nombreCliente, mensajeOriginal, productos) {
+async function guardarEnFirebase(chatId, nombreCliente, mensajeOriginal, resultado) {
   const pedido = {
     cliente: chatId,
     nombreCliente: nombreCliente || chatId.replace('@c.us', ''),
     hora: admin.firestore.FieldValue.serverTimestamp(),
     estado: 'nuevo',
     mensajeOriginal,
-    productos
+    tipo: resultado.tipo,
+    productos: resultado.productos || [],
+    producto_pregunta: resultado.producto_pregunta || null
   };
   await db.collection('pedidos').add(pedido);
 }
@@ -154,7 +148,7 @@ app.post('/webhook', async (req, res) => {
     } else { return; }
 
     if (!textoMensaje.trim()) return;
-    console.log('Mensaje de', senderName, '(', chatId, '):', textoMensaje);
+    console.log('Mensaje de', senderName, chatId, ':', textoMensaje);
 
     if (!estaAbierto()) {
       await enviarMensaje(chatId, 'Wao, el colmado esta cerrado ahora mismo. Abrimos de 7am a 10pm. Anotate el pedido y nos escribes manana!');
@@ -164,9 +158,10 @@ app.post('/webhook', async (req, res) => {
     const resultado = await procesarPedido(textoMensaje);
     console.log('Resultado:', JSON.stringify(resultado));
 
-    if (resultado.esPedido) {
-      await guardarPedido(chatId, senderName, textoMensaje, resultado.productos);
-      console.log('Pedido guardado para:', senderName);
+    // Guardar pedidos y preguntas (no saludos generales)
+    if (resultado.tipo === 'pedido' || resultado.tipo === 'pregunta') {
+      await guardarEnFirebase(chatId, senderName, textoMensaje, resultado);
+      console.log('Guardado en Firebase:', resultado.tipo, 'de', senderName);
     }
     await enviarMensaje(chatId, resultado.respuesta);
 
